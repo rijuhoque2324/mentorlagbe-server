@@ -11,7 +11,8 @@ let mongo: MongoMemoryServer | undefined;
 
 /** One in-memory MongoDB for the whole run; each test file uses its own database. */
 export async function setup(project: TestProject) {
-  mongo = await MongoMemoryServer.create();
+  // Slow disks/CI need more than the 10s default for mongod to become ready.
+  mongo = await MongoMemoryServer.create({ instance: { launchTimeout: 60_000 } });
   project.provide("mongoUri", mongo.getUri());
 }
 

@@ -20,3 +20,8 @@ export function authorize(...roles: UserRole[]) {
     next();
   };
 }
+
+/** Role guards. Always mount after `verifyToken`. */
+export const verifyStudent = authorize("student");
+export const verifyTutor = authorize("tutor");
+export const verifyAdmin = authorize("admin");

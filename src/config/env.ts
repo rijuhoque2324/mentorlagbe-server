@@ -29,6 +29,11 @@ const envSchema = z.object({
     .min(32, "BETTER_AUTH_SECRET must be at least 32 characters"),
   BETTER_AUTH_URL: z.url().default("http://localhost:5000"),
 
+  // Access tokens for protected /api/v1 routes. Falls back to the Better Auth
+  // secret when unset so local development works out of the box.
+  JWT_SECRET: optionalSecret,
+  JWT_EXPIRES_IN: z.string().trim().min(1).default("1h"),
+
   STRIPE_SECRET_KEY: optionalSecret,
   STRIPE_WEBHOOK_SECRET: optionalSecret,
   STRIPE_CURRENCY: z
@@ -46,6 +51,7 @@ const envSchema = z.object({
 export type Env = z.infer<typeof envSchema> & {
   CLIENT_ORIGINS: string[];
   PRIMARY_CLIENT_URL: string;
+  JWT_SIGNING_SECRET: string;
   isProduction: boolean;
   isTest: boolean;
 };
@@ -85,6 +91,7 @@ function loadEnv(): Env {
     ...data,
     CLIENT_ORIGINS: [...new Set(origins)],
     PRIMARY_CLIENT_URL: origins[0]!,
+    JWT_SIGNING_SECRET: data.JWT_SECRET ?? data.BETTER_AUTH_SECRET,
     isProduction: data.NODE_ENV === "production",
     isTest: data.NODE_ENV === "test",
   };

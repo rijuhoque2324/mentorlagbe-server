@@ -153,13 +153,41 @@ export async function listUserPayments(user: AuthUser, page: number, limit: numb
   return { items: items.map((item) => serializePayment(item)), meta: buildMeta(page, limit, total) };
 }
 
-/** Authoritative checkout result for the purchaser. Never grants a plan. */
-export async function getCheckoutStatus(user: AuthUser, sessionId: string) {
-  const payment = await payments().findOne({ stripeSessionId: sessionId, userId: user._id });
+/**
+ * Checkout verification fallback: when the webhook has not arrived yet, ask
+ * Stripe directly for the session and run the same verification + fulfilment
+ * path the webhook uses. The plan is only granted when Stripe reports `paid`
+ * and every amount/user/plan field matches the server-side record.
+ */
+async function verifyPendingCheckout(payment: PaymentDoc): Promise<PaymentDoc> {
+  if (payment.status !== "pending" || !payment.stripeSessionId) return payment;
 
-  if (!payment) {
+  try {
+    const stripe = requireStripe();
+    const session = await stripe.checkout.sessions.retrieve(payment.stripeSessionId);
+    if (session.payment_status !== "paid") return payment;
+
+    const syntheticEvent = { id: `verify_${session.id}`, type: "checkout.session.completed" } as Stripe.Event;
+    await handleSessionPaid(syntheticEvent, session);
+    return (await payments().findOne({ _id: payment._id })) ?? payment;
+  } catch (error) {
+    logger.warn("Checkout verification failed", {
+      paymentId: payment._id.toHexString(),
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return payment;
+  }
+}
+
+/** Authoritative checkout result for the purchaser. */
+export async function getCheckoutStatus(user: AuthUser, sessionId: string) {
+  const found = await payments().findOne({ stripeSessionId: sessionId, userId: user._id });
+
+  if (!found) {
     throw AppError.notFound("Payment not found");
   }
+
+  const payment = await verifyPendingCheckout(found);
 
   const messages: Record<PaymentDoc["status"], string> = {
     paid: "Payment confirmed. Your Pro plan is active.",

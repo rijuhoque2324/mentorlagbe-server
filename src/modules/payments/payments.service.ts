@@ -20,9 +20,13 @@ export function serializePayment(doc: PaymentWithUser, options: { admin?: boolea
     id: doc._id.toHexString(),
     userId: doc.userId.toHexString(),
     userEmail: doc.userEmail,
+    userName: doc.userName ?? user?.name ?? null,
+    userRole: doc.userRole ?? doc.role,
     role: doc.role,
     plan: doc.plan,
-    planName: PAID_PLANS[doc.plan]?.name ?? doc.plan,
+    planName: doc.planName ?? PAID_PLANS[doc.plan]?.name ?? doc.plan,
+    transactionId: doc.transactionId ?? doc.stripePaymentIntentId ?? doc.stripeSessionId ?? null,
+    paymentStatus: doc.paymentStatus ?? doc.status,
     amount: doc.amount,
     currency: doc.currency.toUpperCase(),
     status: doc.status,
@@ -81,13 +85,18 @@ export async function createCheckoutSession(user: AuthUser, planId: PaidPlanId, 
   const insert = await payments().insertOne({
     userId: user._id,
     userEmail: user.email,
+    userName: user.name,
+    userRole: plan.role,
     role: plan.role,
     plan: plan.id,
+    planName: plan.name,
     amount: plan.amount,
     currency: plan.currency,
     stripeSessionId: null,
     stripePaymentIntentId: null,
+    transactionId: null,
     status: "pending",
+    paymentStatus: "pending",
     failureReason: null,
     paidAt: null,
     processedEventIds: [],
@@ -329,7 +338,12 @@ async function handleSessionPaid(event: Stripe.Event, session: Stripe.Checkout.S
     await payments().updateOne(
       { _id: payment._id, status: "pending" },
       {
-        $set: { status: "failed", failureReason: `verification_failed:${mismatch}`, updatedAt: new Date() },
+        $set: {
+        status: "failed",
+        paymentStatus: "failed",
+        failureReason: `verification_failed:${mismatch}`,
+        updatedAt: new Date(),
+      },
         $addToSet: { processedEventIds: event.id },
       },
     );
@@ -358,8 +372,10 @@ async function handleSessionPaid(event: Stripe.Event, session: Stripe.Checkout.S
     {
       $set: {
         status: "paid",
+        paymentStatus: "paid",
         stripeSessionId: session.id,
         stripePaymentIntentId: paymentIntent,
+        transactionId: paymentIntent ?? session.id,
         paidAt: now,
         failureReason: null,
         updatedAt: now,
@@ -390,7 +406,7 @@ async function handleSessionClosed(
 
   await payments().updateOne(
     { _id: payment._id, status: "pending" },
-    { $set: { status, failureReason: reason, updatedAt: new Date() } },
+    { $set: { status, paymentStatus: status, failureReason: reason, updatedAt: new Date() } },
   );
   await markProcessed(payment._id, event.id);
 

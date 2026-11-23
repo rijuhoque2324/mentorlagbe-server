@@ -127,9 +127,18 @@ export interface PaymentDoc {
 
   userId: ObjectId;
   userEmail: string;
+  /** Snapshot of the purchaser's name/role at checkout time. */
+  userName?: string;
+  userRole?: "student" | "tutor";
 
   role: "student" | "tutor";
   plan: "student_pro" | "tutor_pro";
+  /** Human-readable plan name, e.g. "Student Pro". */
+  planName?: string;
+  /** Stripe PaymentIntent id once paid (the transaction reference). */
+  transactionId?: string | null;
+  /** Mirrors `status` under the field name used by the data design. */
+  paymentStatus?: PaymentStatus;
 
   /** Major currency units (e.g. 10 = $10.00). */
   amount: number;

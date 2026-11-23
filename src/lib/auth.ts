@@ -157,10 +157,10 @@ export function createAuth(db: Db) {
     rateLimit: {
       enabled: env.isProduction,
       window: 60,
-      max: 100,
+      max: 300,
       customRules: {
-        "/sign-in/email": { window: 60, max: 10 },
-        "/sign-up/email": { window: 60, max: 5 },
+        "/sign-in/email": { window: 60, max: 30 },
+        "/sign-up/email": { window: 60, max: 20 },
       },
     },
 

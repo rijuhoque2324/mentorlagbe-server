@@ -28,10 +28,12 @@ function limiter(windowMs: number, limit: number, message: string) {
 }
 
 /** General API ceiling per IP. */
-export const apiLimiter = limiter(15 * 60 * 1000, 600, "Too many requests. Please slow down.");
+// Requests may arrive through the client's same-origin proxy, so several
+// visitors can share an upstream IP; keep ceilings generous.
+export const apiLimiter = limiter(15 * 60 * 1000, 3000, "Too many requests. Please slow down.");
 
 /** Sign-in / sign-up brute-force protection (in addition to Better Auth's own limiter). */
-export const authLimiter = limiter(15 * 60 * 1000, 30, "Too many authentication attempts. Try again later.");
+export const authLimiter = limiter(15 * 60 * 1000, 120, "Too many authentication attempts. Try again later.");
 
 /** Checkout creation and uploads hit paid third-party APIs. */
 export const sensitiveLimiter = limiter(15 * 60 * 1000, 30, "Too many requests for this action. Try again later.");

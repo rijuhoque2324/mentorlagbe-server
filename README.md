@@ -2,10 +2,42 @@
 
 REST API for **MentorLagbe**, a tuition marketplace that connects students and tutors. The server is the authoritative system for authentication, role and ownership checks, tuition moderation, applications, plan entitlements, Stripe payments and image uploads. The web client is treated as untrusted.
 
-- **Server repository:** `mentorlagbe-server` (this repo). Add the hosted Git URL here once pushed.
-- **API base URL:** `http://localhost:5000/api/v1` locally. In production: `https://<your-host>/api/v1`
-- **Auth base URL:** `http://localhost:5000/api/auth` (Better Auth)
-- **Client:** `../mentorlagbe-client` (Next.js). It is already configured for these URLs.
+| | |
+|---|---|
+| **Live API** | https://mentorlagbe-server-gules.vercel.app (health: `/api/v1/health`) |
+| **Live site** | https://mentorlagbe-client-black.vercel.app |
+| **Client repo** | https://github.com/rijuhoque2324/mentorlagbe-client |
+| **Local API** | `http://localhost:5000/api/v1`, Better Auth at `http://localhost:5000/api/auth` |
+
+### Demo credentials
+
+All seeded demo accounts use the password **`MentorLagbe@2026`**.
+
+| Role | Email |
+|---|---|
+| Admin | `admin@mentorlagbe.test` |
+| Tutor (Pro) | `kamal.tutor@mentorlagbe.test` |
+| Tutor (Free) | `sadia.tutor@mentorlagbe.test` |
+| Student (Free) | `rafi.student@mentorlagbe.test` |
+| Student (Pro) | `ayesha.student@mentorlagbe.test` |
+
+### Key features
+
+- Better Auth (MongoDB adapter) sign-up/sign-in with role selection; new users start on `free`.
+- **JWT verification + role middlewares:** `verifyToken`, `verifyStudent`, `verifyTutor`, `verifyAdmin`.
+- Tuition CRUD with admin approval flow, free-plan limit (2 posts) and active/closed toggle.
+- Applications with duplicate prevention, cancel-while-pending and tutor accept/reject.
+- Server-side search, filters (subject, class level, mode) and pagination (`skip`/`limit`).
+- Stripe Checkout for Student Pro ($10) and Tutor Pro ($15); a webhook **and** a checkout-verification
+  fallback both insert into `payments` and set `plan: "pro"` in `users`.
+- ImgBB image upload (profile photo, tuition banner) with the key kept server-side.
+- Student bookmarks (5 on Free, unlimited on Pro), public platform statistics, and seeded demo data.
+- 97 integration tests (Vitest + Supertest + in-memory MongoDB).
+
+### npm packages
+
+`express`, `mongodb`, `better-auth`, `jsonwebtoken`, `stripe`, `zod`, `multer`, `cors`, `helmet`,
+`express-rate-limit`, `dotenv`; dev: `typescript`, `tsx`, `vitest`, `supertest`, `mongodb-memory-server`.
 
 ## Technology stack
 
@@ -23,11 +55,9 @@ REST API for **MentorLagbe**, a tuition marketplace that connects students and t
 
 ## Architecture decisions
 
-These resolve the open decisions in [SERVER_PRD.md §23](SERVER_PRD.md).
-
 | # | Decision |
 |---|---|
-| Auth integration | Better Auth is the only auth authority, mounted at `/api/auth/*`, with **cookie sessions**. The `authenticate` middleware calls `auth.api.getSession({ headers })`, which validates the signed cookie against the `sessions` collection. It then loads role and plan fresh from `users`. There is no parallel JWT system. Raw session tokens are stripped from Better Auth JSON responses, so page scripts can't read them. |
+| Auth integration | Better Auth handles sign-up/sign-in at `/api/auth/*` with an HTTP-only session cookie. The client then calls `POST /api/v1/auth/token`, which validates that session and returns a short-lived **HS256 JWT** (`JWT_SECRET`, `JWT_EXPIRES_IN`). Protected routes use `verifyToken`, which verifies the `Authorization: Bearer` token (signature, expiry, issuer, audience) and reloads role and plan from `users`, followed by `verifyStudent`, `verifyTutor` or `verifyAdmin`. Requests without a bearer header fall back to the session cookie. |
 | One user record | Better Auth uses `usePlural: true`, so its user model **is** the business `users` collection. `role`, `plan`, `phone`, `bio` and `location` are Better Auth "additional fields". Credentials live only in Better Auth's `accounts` collection. |
 | Role/plan safety | Sign-up accepts `role` only as `student` or `tutor`. `plan` is never accepted from a client, and new accounts are always `free`. Better Auth's generic `/update-user`, `/delete-user` and `/change-email` endpoints are disabled. Profile edits go through `PATCH /users/me`, which accepts only `name`, `phone`, `bio` and `location`. |
 | Admin provisioning | Public sign-up can never create an admin. Admins are created or promoted with `npm run create-admin`. |
@@ -51,7 +81,7 @@ src/
 ├── lib/auth.ts             # Better Auth configuration
 ├── middlewares/            # authenticate, authorize, require-ownership, validate, error-handler, rate-limit, request-context
 ├── modules/
-│   ├── auth/               # Mounts Better Auth; GET /auth/session
+│   ├── auth/               # Mounts Better Auth; GET /auth/session; POST /auth/token (JWT)
 │   ├── users/              # /users/me profile + avatar
 │   ├── tuitions/           # Public listing, tutor CRUD, moderation service
 │   ├── applications/       # Apply, list, cancel, accept/reject
@@ -199,7 +229,9 @@ Copy `.env.example` to `.env` and fill in values. Never commit `.env`.
 | `MONGODB_URI` | yes | MongoDB connection string |
 | `MONGODB_DB_NAME` | no | Default `mentorlagbe` |
 | `BETTER_AUTH_SECRET` | yes | ≥ 32 random characters |
-| `BETTER_AUTH_URL` | yes | Public base URL of this server (e.g. `http://localhost:5000`) |
+| `BETTER_AUTH_URL` | yes | Public auth origin (the client origin when proxied) |
+| `JWT_SECRET` | recommended | HS256 signing secret for access tokens (falls back to `BETTER_AUTH_SECRET`) |
+| `JWT_EXPIRES_IN` | no | Access-token lifetime, default `1h` |
 | `STRIPE_SECRET_KEY` | for payments | Stripe secret key (`sk_test_...` in development) |
 | `STRIPE_WEBHOOK_SECRET` | for payments | Signing secret of the webhook endpoint (`whsec_...`) |
 | `STRIPE_CURRENCY` | no | Default `usd` |
@@ -248,7 +280,7 @@ The seed creates:
 - 8 applications: pending, accepted, rejected and cancelled
 - 4 payments marked `isDemo: true` (never real charges; excluded from revenue)
 
-**Demo credentials:** the accounts use the `@mentorlagbe.test` domain, and the seed prints them, e.g. `admin@mentorlagbe.test`, `ayesha.student@mentorlagbe.test`, `kamal.tutor@mentorlagbe.test`. The password is your `SEED_DEMO_PASSWORD`. If that's unset, a random password is generated and printed once, so there's no publicly known default. Don't seed production.
+**Demo credentials:** the accounts use the `@mentorlagbe.test` domain, and the seed prints them, e.g. `admin@mentorlagbe.test`, `ayesha.student@mentorlagbe.test`, `kamal.tutor@mentorlagbe.test`. The password is your `SEED_DEMO_PASSWORD` (`npm run reset-demo-passwords` re-applies it to existing demo accounts). If that's unset, a random password is generated and printed once, so there's no publicly known default. Don't seed production.
 
 ### Creating a real admin
 
@@ -264,7 +296,7 @@ If the email already exists, that user is promoted. Without `ADMIN_PASSWORD`, a 
 npm test
 ```
 
-There are 91 integration tests. They exercise the real app (Better Auth, Express, MongoDB) against an in-memory MongoDB. Stripe and ImgBB HTTP calls are stubbed, and Stripe webhook signatures are generated with the real SDK. Coverage:
+There are 97 integration tests. They exercise the real app (Better Auth, Express, MongoDB) against an in-memory MongoDB. Stripe and ImgBB HTTP calls are stubbed, and Stripe webhook signatures are generated with the real SDK. Coverage:
 
 - Registration, login and sign-out; expired, forged and revoked sessions; admin self-registration blocked; plan injection ignored
 - Student, tutor and admin permissions; tuition ownership on update and delete
@@ -279,28 +311,24 @@ There are 91 integration tests. They exercise the real app (Better Auth, Express
 
 > **Known environment issue (Windows + Node 24.15):** on the development machine, a long run of authenticated HTTP requests occasionally aborted the Node process natively (`0xC0000409`). Vitest reports this as "Worker exited unexpectedly". It reproduced with the compiled `dist/` build under plain `node`, outside the test runner. It did not reproduce with Express, the MongoDB driver, WebCrypto or `node:http` in isolation, and the code is pure JavaScript. When it happens, re-run `npm test`. Any test that runs reports pass or fail normally. Trying Node 22 LTS on Windows, or running CI on Linux, is recommended.
 
-## Deployment
+## Deployment (Vercel)
 
-Any Node.js host works (Render, Railway, Fly.io, a VPS). Example for Render:
+The API runs as a Vercel Serverless Function: `api/index.js` re-exports `src/vercel.ts`
+(compiled to `dist/`), which caches the MongoDB connection, Better Auth instance and Express
+app per warm instance. `vercel.json` rewrites every path to that function.
 
-1. Create a **Web Service** from this repo.
-   - Build: `npm ci && npm run build`
-   - Start: `npm start`
-   - Node 20+
-2. Set the environment variables from the table above:
-   - `NODE_ENV=production`
-   - `TRUST_PROXY=1`
-   - `BETTER_AUTH_URL=https://<api-host>`
-   - `CLIENT_URL=https://<client-host>`
-   - `MONGODB_URI` (Atlas)
-   - The Stripe live or test keys and `IMGBB_API_KEY`
-3. In the Stripe Dashboard, add a webhook endpoint `https://<api-host>/api/v1/payments/webhook` for the four `checkout.session.*` events. Then set `STRIPE_WEBHOOK_SECRET`.
-4. Provision an admin by running `npm run create-admin` once against the production database from a trusted shell.
-5. Point the client at the server:
-   - `NEXT_PUBLIC_API_URL=https://<api-host>/api/v1`
-   - `NEXT_PUBLIC_BETTER_AUTH_URL=https://<api-host>`
+1. `vercel link`, then add the production environment variables: `NODE_ENV=production`,
+   `TRUST_PROXY=1`, `MONGODB_URI`, `MONGODB_DB_NAME`, `BETTER_AUTH_SECRET`, `JWT_SECRET`,
+   `STRIPE_SECRET_KEY`, `IMGBB_API_KEY`, and `CLIENT_URL` / `BETTER_AUTH_URL` set to the
+   deployed client origin.
+2. `vercel deploy --prod`.
+3. MongoDB Atlas must allow connections from Vercel (Network Access `0.0.0.0/0`).
+4. Optional: add a Stripe webhook endpoint `https://<api-host>/api/v1/payments/webhook` for the
+   `checkout.session.*` events and set `STRIPE_WEBHOOK_SECRET`. Without it, the
+   `/payments/status` checkout verification fallback still fulfils paid sessions.
 
-In production, cookies are `Secure; HttpOnly; SameSite=None`, so the client and API can live on different sites over HTTPS. Better Auth's rate limiter and the Express rate limiters are active. Error responses never include stack traces.
+The Next.js client proxies `/api/auth/*` and `/api/v1/*` to this API (`API_PROXY_TARGET`), so
+the session cookie is first-party for the browser and survives reloads.
 
 ## Security summary
 

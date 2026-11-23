@@ -9,17 +9,18 @@ export type ApplicationWithExtras = ApplicationDoc & {
 export type Viewer = "student" | "tutor" | "admin";
 
 /**
- * Contact release policy: the student's phone and the tutor's email are only
- * shared with the other party once the application is accepted. Admins see
- * everything.
+ * Contact sharing: an application is only ever returned to the student who
+ * submitted it, the tutor who owns the tuition post, or an admin (enforced by
+ * the routes/queries). Those parties see each other's contact details, so the
+ * student's "My Applications" shows the tutor's name and email and the tutor's
+ * "Manage Applicants" shows the student's phone.
  */
-export function serializeApplication(doc: ApplicationWithExtras, viewer: Viewer) {
+export function serializeApplication(doc: ApplicationWithExtras, _viewer: Viewer) {
   const tuition = doc.tuitionDoc?.[0];
   const student = doc.studentDoc?.[0];
   const tutor = doc.tutorDoc?.[0];
-  const accepted = doc.status === "accepted";
-  const showStudentPhone = viewer === "admin" || viewer === "student" || accepted;
-  const showTutorEmail = viewer === "admin" || viewer === "tutor" || accepted;
+  const showStudentPhone = true;
+  const showTutorEmail = true;
 
   return {
     id: doc._id.toHexString(),
@@ -29,6 +30,7 @@ export function serializeApplication(doc: ApplicationWithExtras, viewer: Viewer)
     monthlyFee: tuition?.monthlyFee ?? doc.monthlyFee,
 
     tutorId: doc.tutorId.toHexString(),
+    tutorName: tutor?.name ?? tuition?.tutorName ?? null,
     ...(showTutorEmail ? { tutorEmail: doc.tutorEmail } : {}),
 
     studentId: doc.studentId.toHexString(),

@@ -165,11 +165,17 @@ describe("listing", () => {
     expect(res.status).toBe(200);
     expect(res.body.data).toHaveLength(2);
     expect(res.body.data[0]).toMatchObject({ studentId: pro.id, isPriority: true });
-    expect(res.body.data[0]).not.toHaveProperty("studentPhone");
+    // Manage Applicants shows the student's phone so the tutor can decide.
+    expect(res.body.data[0].studentPhone).toBe("+8801700000003");
 
     await proTutor.agent.patch(`/api/v1/applications/${res.body.data[0].id}/accept`);
     const after = await proTutor.agent.get("/api/v1/applications/tutor").query({ status: "accepted" });
     expect(after.body.data[0].studentPhone).toBe("+8801700000003");
+
+    // My Applications shows the tutor's name and email to the student.
+    const mine = await pro.agent.get("/api/v1/applications/my");
+    expect(mine.body.data[0].tutorEmail).toBe(proTutor.email);
+    expect(mine.body.data[0].tutorName).toBe(proTutor.name);
   });
 
   it("students list only their own applications on /my and /me", async () => {

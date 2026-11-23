@@ -7,6 +7,7 @@ import { getAuth } from "../lib/auth.js";
 import type { AuthUser } from "../types/express.js";
 import { USER_ROLES, type UserDoc } from "../types/models.js";
 import { AppError } from "../utils/app-error.js";
+import { verifyAccessToken } from "../utils/jwt.js";
 
 function toAuthUser(doc: UserDoc): AuthUser {
   return {
@@ -21,31 +22,71 @@ function toAuthUser(doc: UserDoc): AuthUser {
   };
 }
 
-/**
- * Resolves the Better Auth session from the request cookies, then loads the
- * business user record so role and plan always come from the database (never
- * from the client or a stale token).
- */
-async function resolveUser(req: Request): Promise<AuthUser | null> {
-  const session = await getAuth().api.getSession({
-    headers: fromNodeHeaders(req.headers),
-  });
-
-  if (!session?.user?.id || !ObjectId.isValid(session.user.id)) {
+async function loadUser(id: string): Promise<AuthUser | null> {
+  if (!ObjectId.isValid(id)) {
     return null;
   }
 
-  const doc = await users().findOne({ _id: new ObjectId(session.user.id) });
+  const doc = await users().findOne({ _id: new ObjectId(id) });
 
   if (!doc || !USER_ROLES.includes(doc.role)) {
     return null;
   }
 
-  req.sessionId = session.session.id;
   return toAuthUser(doc);
 }
 
-export async function authenticate(req: Request, _res: Response, next: NextFunction) {
+function readBearerToken(req: Request): string | null {
+  const header = req.headers.authorization;
+  if (!header) return null;
+  const [scheme, token] = header.split(" ");
+  return scheme?.toLowerCase() === "bearer" && token ? token.trim() : null;
+}
+
+/**
+ * Resolves the Better Auth session from the request cookies. Used to issue
+ * JWTs and as a fallback for cookie-only clients (tests, server-to-server).
+ */
+export async function resolveSessionUser(req: Request): Promise<AuthUser | null> {
+  const session = await getAuth().api.getSession({
+    headers: fromNodeHeaders(req.headers),
+  });
+
+  if (!session?.user?.id) {
+    return null;
+  }
+
+  const user = await loadUser(session.user.id);
+  if (user) {
+    req.sessionId = session.session.id;
+  }
+  return user;
+}
+
+/**
+ * Resolves the request user. A `Authorization: Bearer <jwt>` header is
+ * verified first; role and plan are always re-read from the database so a
+ * token can never grant more than the stored account allows.
+ */
+async function resolveUser(req: Request): Promise<AuthUser | null> {
+  const token = readBearerToken(req);
+
+  if (token) {
+    const payload = verifyAccessToken(token);
+    if (!payload) {
+      throw AppError.unauthorized("Your access token is invalid or has expired. Please sign in again.");
+    }
+    return loadUser(payload.sub);
+  }
+
+  return resolveSessionUser(req);
+}
+
+/**
+ * verifyToken — rejects the request unless it carries a valid JWT (or a
+ * valid Better Auth session cookie) for an existing user.
+ */
+export async function verifyToken(req: Request, _res: Response, next: NextFunction) {
   const user = await resolveUser(req);
 
   if (!user) {
@@ -56,7 +97,10 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
   next();
 }
 
-/** Attaches the user when a valid session exists, but never rejects the request. */
+/** Backwards-compatible alias. */
+export const authenticate = verifyToken;
+
+/** Attaches the user when valid credentials exist, but never rejects the request. */
 export async function optionalAuthenticate(req: Request, _res: Response, next: NextFunction) {
   try {
     const user = await resolveUser(req);
@@ -64,7 +108,7 @@ export async function optionalAuthenticate(req: Request, _res: Response, next: N
       req.user = user;
     }
   } catch {
-    // Public endpoints keep working if session lookup fails.
+    // Public endpoints keep working if credential lookup fails.
   }
 
   next();

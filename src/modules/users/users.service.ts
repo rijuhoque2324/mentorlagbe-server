@@ -25,6 +25,7 @@ export async function updateProfile(id: ObjectId, input: UpdateProfileInput): Pr
   if (input.phone !== undefined) set.phone = input.phone;
   if (input.bio !== undefined) set.bio = input.bio;
   if (input.location !== undefined) set.location = input.location;
+  if (input.image !== undefined) set.image = input.image;
 
   const nextName = set.name ?? current.name;
   const nextPhone = set.phone !== undefined ? set.phone : current.phone;

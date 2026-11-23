@@ -24,6 +24,22 @@ export const updateProfileSchema = z
         .optional(),
       bio: optionalText(500),
       location: optionalText(120),
+      // Profile photo by URL (alternative to the ImgBB upload endpoint).
+      image: z
+        .string()
+        .trim()
+        .max(2048)
+        .refine((value) => {
+          if (value === "") return true;
+          try {
+            return new URL(value).protocol === "https:";
+          } catch {
+            return false;
+          }
+        }, "Image must be an https:// URL")
+        .transform((value) => (value === "" ? null : value))
+        .nullable()
+        .optional(),
     },
     { error: (issue) => (issue.code === "unrecognized_keys" ? `Field not allowed: ${issue.keys.join(", ")}` : undefined) },
   )

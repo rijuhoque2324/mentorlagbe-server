@@ -1,6 +1,6 @@
 import { Router } from "express";
 
-import { authenticate, requireUser } from "../../middlewares/authenticate.js";
+import { verifyToken, requireUser } from "../../middlewares/authenticate.js";
 import { sensitiveLimiter } from "../../middlewares/rate-limit.js";
 import { body, validate } from "../../middlewares/validate.js";
 import { sendSuccess } from "../../utils/response.js";
@@ -11,7 +11,7 @@ import { updateProfileSchema, type UpdateProfileInput } from "./users.validation
 
 export const usersRouter = Router();
 
-usersRouter.use(authenticate);
+usersRouter.use(verifyToken);
 
 usersRouter.get("/me", async (req, res) => {
   const user = requireUser(req);

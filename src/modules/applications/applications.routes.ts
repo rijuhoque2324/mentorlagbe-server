@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from "express";
 
-import { authenticate, requireUser } from "../../middlewares/authenticate.js";
-import { authorize } from "../../middlewares/authorize.js";
+import { verifyToken, requireUser } from "../../middlewares/authenticate.js";
+import { verifyStudent, verifyTutor } from "../../middlewares/authorize.js";
 import { requireOwnership } from "../../middlewares/require-ownership.js";
 import { body, query, validate } from "../../middlewares/validate.js";
 import type { ApplicationDoc } from "../../types/models.js";
@@ -26,7 +26,7 @@ import {
 
 export const applicationsRouter = Router();
 
-applicationsRouter.use(authenticate);
+applicationsRouter.use(verifyToken);
 
 const resource = (res: Response) => res.locals.resource as ApplicationDoc;
 
@@ -52,7 +52,7 @@ const anyParty = requireOwnership<ApplicationDoc>({
 });
 
 // POST /applications
-applicationsRouter.post("/", authorize("student"), validate({ body: createApplicationSchema }), async (req, res) => {
+applicationsRouter.post("/", verifyStudent, validate({ body: createApplicationSchema }), async (req, res) => {
   const input = body<CreateApplicationInput>(req);
   const application = await applyToTuition(requireUser(req), toObjectId(input.tuitionId), input);
   sendCreated(res, application, "Application submitted successfully");
@@ -60,14 +60,14 @@ applicationsRouter.post("/", authorize("student"), validate({ body: createApplic
 
 // GET /applications/my  (alias: /applications/me)
 for (const path of ["/my", "/me"]) {
-  applicationsRouter.get(path, authorize("student"), validate({ query: applicationListQuerySchema }), async (req, res) => {
+  applicationsRouter.get(path, verifyStudent, validate({ query: applicationListQuerySchema }), async (req, res) => {
     const { items, meta } = await listStudentApplications(requireUser(req), query<ApplicationListQuery>(req));
     sendPaginated(res, items, meta, "Applications loaded");
   });
 }
 
 // GET /applications/tutor
-applicationsRouter.get("/tutor", authorize("tutor"), validate({ query: applicationListQuerySchema }), async (req, res) => {
+applicationsRouter.get("/tutor", verifyTutor, validate({ query: applicationListQuerySchema }), async (req, res) => {
   const { items, meta } = await listTutorApplications(requireUser(req), query<ApplicationListQuery>(req));
   sendPaginated(res, items, meta, "Applicants loaded");
 });
@@ -80,7 +80,7 @@ applicationsRouter.get("/:id", validate({ params: idParamSchema }), anyParty, as
 
 // PATCH /applications/:id/cancel  (alias: DELETE /applications/:id)
 const cancelHandlers = [
-  authorize("student"),
+  verifyStudent,
   validate({ params: idParamSchema }),
   studentOwner,
   async (req: Request, res: Response) => {
@@ -95,7 +95,7 @@ applicationsRouter.delete("/:id", ...cancelHandlers);
 // PATCH /applications/:id/accept | /reject
 for (const decision of ["accepted", "rejected"] as const) {
   const path = decision === "accepted" ? "/:id/accept" : "/:id/reject";
-  applicationsRouter.patch(path, authorize("tutor"), validate({ params: idParamSchema }), tutorOwner, async (req, res) => {
+  applicationsRouter.patch(path, verifyTutor, validate({ params: idParamSchema }), tutorOwner, async (req, res) => {
     const application = await decideApplication(resource(res), requireUser(req), decision);
     sendSuccess(res, application, `Application ${decision}`);
   });
@@ -104,7 +104,7 @@ for (const decision of ["accepted", "rejected"] as const) {
 // PATCH /applications/:id/status  { status: "accepted" | "rejected" }
 applicationsRouter.patch(
   "/:id/status",
-  authorize("tutor"),
+  verifyTutor,
   validate({ params: idParamSchema, body: decisionSchema }),
   tutorOwner,
   async (req, res) => {

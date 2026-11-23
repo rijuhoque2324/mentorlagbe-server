@@ -1,8 +1,8 @@
 import { Router, type Request, type Response } from "express";
 import { z } from "zod";
 
-import { authenticate, requireUser } from "../../middlewares/authenticate.js";
-import { authorize } from "../../middlewares/authorize.js";
+import { verifyToken, requireUser } from "../../middlewares/authenticate.js";
+import { verifyAdmin } from "../../middlewares/authorize.js";
 import { body, params, query, validate } from "../../middlewares/validate.js";
 import { USER_ROLES, type UserRole } from "../../types/models.js";
 import { idParamSchema, paginationSchema, toObjectId } from "../../utils/query.js";
@@ -21,7 +21,7 @@ import { changeUserRole, getDashboardStats, getUserDetails, listUsers } from "./
 export const adminRouter = Router();
 
 // Every admin endpoint requires a verified admin session.
-adminRouter.use(authenticate, authorize("admin"));
+adminRouter.use(verifyToken, verifyAdmin);
 
 const roleSchema = z.enum(USER_ROLES as [UserRole, ...UserRole[]], {
   error: "Role must be student, tutor or admin",

@@ -1,8 +1,8 @@
 import { Router } from "express";
 import { z } from "zod";
 
-import { authenticate, requireUser } from "../../middlewares/authenticate.js";
-import { authorize } from "../../middlewares/authorize.js";
+import { verifyToken, requireUser } from "../../middlewares/authenticate.js";
+import { verifyStudent } from "../../middlewares/authorize.js";
 import { body, params, query, validate } from "../../middlewares/validate.js";
 import { objectIdString, paginationSchema, toObjectId } from "../../utils/query.js";
 import { sendCreated, sendSuccess } from "../../utils/response.js";
@@ -10,7 +10,7 @@ import { addBookmark, listBookmarks, removeBookmark, removeBookmarkByTuition } f
 
 export const bookmarksRouter = Router();
 
-bookmarksRouter.use(authenticate, authorize("student"));
+bookmarksRouter.use(verifyToken, verifyStudent);
 
 const listQuery = z.object({
   page: paginationSchema.page,

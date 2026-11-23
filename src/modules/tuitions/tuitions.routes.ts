@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from "express";
 
-import { authenticate, optionalAuthenticate, requireUser } from "../../middlewares/authenticate.js";
-import { authorize } from "../../middlewares/authorize.js";
+import { verifyToken, optionalAuthenticate, requireUser } from "../../middlewares/authenticate.js";
+import { verifyStudent, verifyTutor } from "../../middlewares/authorize.js";
 import { sensitiveLimiter } from "../../middlewares/rate-limit.js";
 import { requireOwnership } from "../../middlewares/require-ownership.js";
 import { body, params, query, validate } from "../../middlewares/validate.js";
@@ -66,9 +66,9 @@ tuitionsRouter.get("/featured", optionalAuthenticate, validate({ query: featured
 
 // ---- Tutor (must be registered before "/:id") ---------------------------
 
-tuitionsRouter.get("/mine", authenticate, authorize("tutor"), validate({ query: tutorTuitionsQuerySchema }), listMine);
+tuitionsRouter.get("/mine", verifyToken, verifyTutor, validate({ query: tutorTuitionsQuerySchema }), listMine);
 
-tuitionsRouter.post("/", authenticate, authorize("tutor"), validate({ body: createTuitionSchema }), async (req, res) => {
+tuitionsRouter.post("/", verifyToken, verifyTutor, validate({ body: createTuitionSchema }), async (req, res) => {
   const tuition = await createTuition(requireUser(req), body<CreateTuitionInput>(req));
   sendCreated(res, tuition, "Tuition created successfully and submitted for approval");
 });
@@ -80,8 +80,8 @@ tuitionsRouter.get("/:id", optionalAuthenticate, validate({ params: idParamSchem
 
 tuitionsRouter.patch(
   "/:id",
-  authenticate,
-  authorize("tutor"),
+  verifyToken,
+  verifyTutor,
   validate({ params: idParamSchema, body: updateTuitionSchema }),
   ownTuition,
   async (req, res) => {
@@ -92,8 +92,8 @@ tuitionsRouter.patch(
 
 tuitionsRouter.patch(
   "/:id/status",
-  authenticate,
-  authorize("tutor"),
+  verifyToken,
+  verifyTutor,
   validate({ params: idParamSchema, body: tuitionStatusSchema }),
   ownTuition,
   async (req, res) => {
@@ -105,8 +105,8 @@ tuitionsRouter.patch(
 
 tuitionsRouter.post(
   "/:id/banner",
-  authenticate,
-  authorize("tutor"),
+  verifyToken,
+  verifyTutor,
   sensitiveLimiter,
   validate({ params: idParamSchema }),
   ownTuition,
@@ -117,7 +117,7 @@ tuitionsRouter.post(
   },
 );
 
-tuitionsRouter.delete("/:id", authenticate, authorize("tutor"), validate({ params: idParamSchema }), ownTuition, async (req, res) => {
+tuitionsRouter.delete("/:id", verifyToken, verifyTutor, validate({ params: idParamSchema }), ownTuition, async (req, res) => {
   await deleteTuition(resource(res), requireUser(req));
   sendSuccess(res, null, "Tuition deleted successfully");
 });
@@ -126,8 +126,8 @@ tuitionsRouter.delete("/:id", authenticate, authorize("tutor"), validate({ param
 
 tuitionsRouter.post(
   "/:id/apply",
-  authenticate,
-  authorize("student"),
+  verifyToken,
+  verifyStudent,
   validate({ params: idParamSchema, body: applyToTuitionSchema }),
   async (req, res) => {
     const { id } = params<{ id: string }>(req);
@@ -142,8 +142,8 @@ export const tutorRouter = Router();
 
 tutorRouter.get(
   "/tuitions",
-  authenticate,
-  authorize("tutor"),
+  verifyToken,
+  verifyTutor,
   validate({ query: tutorTuitionsQuerySchema }),
   listMine,
 );

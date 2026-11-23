@@ -2,7 +2,7 @@ import express, { Router, type Request, type Response } from "express";
 import { z } from "zod";
 
 import { isPaidPlanId, type PaidPlanId } from "../../config/plans.js";
-import { authenticate, requireUser } from "../../middlewares/authenticate.js";
+import { verifyToken, requireUser } from "../../middlewares/authenticate.js";
 import { authorize } from "../../middlewares/authorize.js";
 import { sensitiveLimiter } from "../../middlewares/rate-limit.js";
 import { body, query, validate } from "../../middlewares/validate.js";
@@ -43,7 +43,7 @@ async function checkout(req: Request, res: Response) {
 }
 
 const checkoutChain = [
-  authenticate,
+  verifyToken,
   authorize("student", "tutor"),
   sensitiveLimiter,
   validate({ body: checkoutSchema }),
@@ -55,7 +55,7 @@ paymentsRouter.post("/checkout", ...checkoutChain);
 
 paymentsRouter.get(
   "/my",
-  authenticate,
+  verifyToken,
   validate({ query: z.object(paginationSchema) }),
   async (req, res) => {
     const { page, limit } = query<{ page: number; limit: number }>(req);
@@ -64,7 +64,7 @@ paymentsRouter.get(
   },
 );
 
-paymentsRouter.get("/status", authenticate, validate({ query: statusQuery }), async (req, res) => {
+paymentsRouter.get("/status", verifyToken, validate({ query: statusQuery }), async (req, res) => {
   const { session_id: sessionId } = query<{ session_id: string }>(req);
   sendSuccess(res, await getCheckoutStatus(requireUser(req), sessionId), "Payment status loaded");
 });
